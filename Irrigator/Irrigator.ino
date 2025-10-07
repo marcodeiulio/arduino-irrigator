@@ -1,3 +1,6 @@
+#include <LiquidCrystal.h>
+LiquidCrystal lcd(12, 11, 6, 7, 8, 9);
+
 const int enterSwitchPin = 2;
 const int minusSwitchPin = 3;
 const int plusSwitchPin = 4;
@@ -9,10 +12,13 @@ const int blueLedPin = 11;
 const int ledOffValue = LOW;
 const int ledOnValue = 10;
 
-enum Switches { NO_PRESS = 0,
-                ENTER = 1,
-                MINUS = 2,
-                PLUS = 3 };
+enum SwitchState { NO_PRESS = 0,
+                   ENTER = 1,
+                   MINUS = 2,
+                   PLUS = 3 };
+
+SwitchState currValue = NO_PRESS;
+SwitchState prevValue = NO_PRESS;
 
 void setup() {
   pinMode(enterSwitchPin, INPUT);
@@ -26,31 +32,53 @@ void setup() {
   analogWrite(redLedPin, ledOffValue);
   analogWrite(greenLedPin, ledOffValue);
   analogWrite(blueLedPin, ledOffValue);
+
+  lcd.begin(16, 2);
+  updateScreen("Adjust contrast", "as preferred");
+  delay(2000);
+  updateScreen("Please", "press a button");
 }
 
 void loop() {
-  switch (readSwitch()) {
+
+  currValue = readSwitch();
+
+  if (currValue == prevValue) {
+    return;
+  }
+
+  switch (currValue) {
 
     default:
     case NO_PRESS:
-      ledOff();
+      updateScreen("Please", "press a button");
       break;
 
     case ENTER:
-      blue();
+      updateScreen("You pressed", "ENTER");
       break;
 
     case PLUS:
-      green();
+      updateScreen("You pressed", "PLUS");
       break;
 
     case MINUS:
-      red();
+      updateScreen("You pressed", "MINUS");
       break;
   }
+
+  prevValue = currValue;
 }
 
-Switches readSwitch() {
+void updateScreen(String firstRow, String secondRow) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(firstRow);
+  lcd.setCursor(0, 1);
+  lcd.print(secondRow);
+}
+
+SwitchState readSwitch() {
   if (digitalRead(enterSwitchPin) == HIGH) {
     return ENTER;
 
@@ -63,25 +91,4 @@ Switches readSwitch() {
   } else {
     return NO_PRESS;
   }
-}
-
-void ledOff() {
-  analogWrite(redLedPin, ledOffValue);
-  analogWrite(greenLedPin, ledOffValue);
-  analogWrite(blueLedPin, ledOffValue);
-}
-void red() {
-  analogWrite(redLedPin, ledOnValue);
-  analogWrite(greenLedPin, ledOffValue);
-  analogWrite(blueLedPin, ledOffValue);
-}
-void green() {
-  analogWrite(redLedPin, ledOffValue);
-  analogWrite(greenLedPin, ledOnValue);
-  analogWrite(blueLedPin, ledOffValue);
-}
-void blue() {
-  analogWrite(redLedPin, ledOffValue);
-  analogWrite(greenLedPin, ledOffValue);
-  analogWrite(blueLedPin, ledOnValue);
 }
