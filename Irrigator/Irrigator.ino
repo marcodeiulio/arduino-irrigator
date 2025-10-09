@@ -1,94 +1,255 @@
 #include <LiquidCrystal.h>
+
 LiquidCrystal lcd(12, 11, 6, 7, 8, 9);
+
+int lcdColumns = 16;
+int lcdRows = 2;
+
+// ============ SWITCHES MANAGEMENT ============
 
 const int enterSwitchPin = 2;
 const int minusSwitchPin = 3;
 const int plusSwitchPin = 4;
 
-const int redLedPin = 9;
-const int greenLedPin = 10;
-const int blueLedPin = 11;
-
-const int ledOffValue = LOW;
-const int ledOnValue = 10;
-
 enum SwitchState { NO_PRESS = 0,
                    ENTER = 1,
                    MINUS = 2,
                    PLUS = 3 };
-
 SwitchState currValue = NO_PRESS;
 SwitchState prevValue = NO_PRESS;
+
+SwitchState readSwitch() {
+  if (digitalRead(enterSwitchPin) == HIGH) {
+    // short delay to avoid accidental multiple press
+    delay(100);
+    return ENTER;
+  }
+  if (digitalRead(minusSwitchPin) == HIGH) {
+    delay(100);
+    return MINUS;
+  }
+  if (digitalRead(plusSwitchPin) == HIGH) {
+    delay(100);
+    return PLUS;
+  }
+  return NO_PRESS;
+}
+
+// ============ MENU SYSTEM ============
+
+enum MenuItemType {
+  MENU_ITEM_SUBMENU,
+  MENU_ITEM_ACTION,
+  MENU_ITEM_BACK
+};
+
+struct MenuItem;
+typedef void (*ActionCallback)();
+
+struct MenuItem {
+  const char* label;
+  MenuItemType type;
+  MenuItem** children;
+  int childCount;
+  ActionCallback action;
+  MenuItem* parent;
+};
+
+class MenuNavigator {
+private:
+  MenuItem* currentMenu;
+  int currentIndex;
+  int scrollOffset;
+  const int displayRows;
+
+public:
+  MenuNavigator(MenuItem* root, int rows = 2)
+    : currentMenu(root), currentIndex(0), scrollOffset(0), displayRows(rows) {}
+
+  void navigate(int direction) {
+    if (!currentMenu || currentMenu->childCount == 0) return;
+
+    currentIndex += direction;
+
+    if (currentIndex < 0) {
+      currentIndex = currentMenu->childCount - 1;
+    } else if (currentIndex >= currentMenu->childCount) {
+      currentIndex = 0;
+    }
+
+    if (currentIndex < scrollOffset) {
+      scrollOffset = currentIndex;
+    } else if (currentIndex >= scrollOffset + displayRows) {
+      scrollOffset = currentIndex - displayRows + 1;
+    }
+  }
+
+  void select() {
+    if (!currentMenu || currentMenu->childCount == 0) return;
+
+    MenuItem* selected = currentMenu->children[currentIndex];
+
+    switch (selected->type) {
+      case MENU_ITEM_SUBMENU:
+        currentMenu = selected;
+        currentIndex = 0;
+        scrollOffset = 0;
+        break;
+
+      case MENU_ITEM_ACTION:
+        if (selected->action) selected->action();
+        break;
+
+      case MENU_ITEM_BACK:
+        if (currentMenu && currentMenu->parent) {
+          currentMenu = currentMenu->parent;
+          currentIndex = 0;
+          scrollOffset = 0;
+        }
+        break;
+    }
+  }
+
+  void getVisibleItems(MenuItem** items, int& count) {
+    count = 0;
+    if (!currentMenu || currentMenu->childCount == 0) return;
+
+    for (int i = scrollOffset; i < scrollOffset + displayRows && i < currentMenu->childCount; i++) {
+      items[count++] = currentMenu->children[i];
+    }
+  }
+
+  int getCurrentIndex() {
+    return currentIndex;
+  }
+  int getScrollOffset() {
+    return scrollOffset;
+  }
+};
+
+// ============ MENU CALLBACKS ============
+
+//example callbacks
+void viewSensor1() {
+  lcd.clear();
+  float val = 12.2;
+  lcd.print("Sensor 1: " + (String)val + "%");
+  delay(2000);
+}
+
+void viewSensor2() {
+  lcd.clear();
+  float val = 15.8;
+  lcd.print("Sensor 2: " + (String)val + "%");
+  delay(2000);
+}
+
+void viewSensor3() {
+  lcd.clear();
+  float val = 0;
+  lcd.print("Sensor 3: " + (String)val + "%");
+  delay(2000);
+}
+
+void viewSensor4() {
+  lcd.clear();
+  float val = 81.7;
+  lcd.print("Sensor 4: " + (String)val + "%");
+  delay(2000);
+}
+
+// ============ MENU STRUCTURE ============
+
+// Main Menu
+MenuItem mainMenu = { "Main Menu", MENU_ITEM_SUBMENU, nullptr, 0, nullptr, nullptr };
+
+// Main menu children
+MenuItem sensorsMenu = { "Sensors", MENU_ITEM_SUBMENU, nullptr, 0, nullptr, &mainMenu };
+MenuItem settingsMenu = { "Settings", MENU_ITEM_SUBMENU, nullptr, 0, nullptr, &mainMenu };
+
+// Sensors submenu children
+MenuItem sensor1Item = { "Sensor 1", MENU_ITEM_ACTION, nullptr, 0, viewSensor1, &sensorsMenu };
+MenuItem sensor2Item = { "Sensor 2", MENU_ITEM_ACTION, nullptr, 0, viewSensor2, &sensorsMenu };
+MenuItem sensor3Item = { "Sensor 3", MENU_ITEM_ACTION, nullptr, 0, viewSensor3, &sensorsMenu };
+MenuItem sensor4Item = { "Sensor 4", MENU_ITEM_ACTION, nullptr, 0, viewSensor4, &sensorsMenu };
+MenuItem sensorBackItem = { "< Back", MENU_ITEM_BACK, nullptr, 0, nullptr, &sensorsMenu };
+
+// Settings submenu children
+MenuItem settingCalibrateItem = { "Calibrate", MENU_ITEM_ACTION, nullptr, 0, nullptr, &settingsMenu };
+MenuItem settingThresholdsItem = { "Thresholds", MENU_ITEM_ACTION, nullptr, 0, nullptr, &settingsMenu };
+MenuItem settingBackItem = { "< Back", MENU_ITEM_BACK, nullptr, 0, nullptr, &settingsMenu };
+
+// Is there a workaround for this?
+void setupMenu() {
+  // Build main menu
+  static MenuItem* mainChildren[] = { &sensorsMenu, &settingsMenu };
+  mainMenu.children = mainChildren;
+  mainMenu.childCount = 2;
+
+  // Build sensors submenu
+  static MenuItem* sensorChildren[] = { &sensor1Item, &sensor2Item, &sensor3Item, &sensor4Item, &sensorBackItem };
+  sensorsMenu.children = sensorChildren;
+  sensorsMenu.childCount = 5;
+
+  // Build settings submenu
+  static MenuItem* settingsChildren[] = { &settingCalibrateItem, &settingThresholdsItem, &settingBackItem };
+  settingsMenu.children = settingsChildren;
+  settingsMenu.childCount = 3;
+}
+
+MenuNavigator nav(&mainMenu, lcdRows);
+
+// ============ ARDUINO ============
 
 void setup() {
   pinMode(enterSwitchPin, INPUT);
   pinMode(plusSwitchPin, INPUT);
   pinMode(minusSwitchPin, INPUT);
 
-  pinMode(redLedPin, OUTPUT);
-  pinMode(greenLedPin, OUTPUT);
-  pinMode(blueLedPin, OUTPUT);
+  lcd.begin(lcdColumns, lcdRows);
 
-  analogWrite(redLedPin, ledOffValue);
-  analogWrite(greenLedPin, ledOffValue);
-  analogWrite(blueLedPin, ledOffValue);
+  setupMenu();
 
-  lcd.begin(16, 2);
-  updateScreen("Adjust contrast", "as preferred");
-  delay(2000);
-  updateScreen("Please", "press a button");
+  updateDisplay();
 }
 
 void loop() {
-
   currValue = readSwitch();
 
-  if (currValue == prevValue) {
-    return;
-  }
+  if (currValue == prevValue) return;
 
   switch (currValue) {
-
-    default:
-    case NO_PRESS:
-      updateScreen("Please", "press a button");
-      break;
-
     case ENTER:
-      updateScreen("You pressed", "ENTER");
+      nav.select();
+      updateDisplay();
       break;
 
     case PLUS:
-      updateScreen("You pressed", "PLUS");
+      nav.navigate(1);
+      updateDisplay();
       break;
 
     case MINUS:
-      updateScreen("You pressed", "MINUS");
+      nav.navigate(-1);
+      updateDisplay();
+      break;
+
+    default:
       break;
   }
 
   prevValue = currValue;
 }
 
-void updateScreen(String firstRow, String secondRow) {
+void updateDisplay() {
+  MenuItem* items[lcdRows];
+  int count;
+  nav.getVisibleItems(items, count);
+
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(firstRow);
-  lcd.setCursor(0, 1);
-  lcd.print(secondRow);
-}
-
-SwitchState readSwitch() {
-  if (digitalRead(enterSwitchPin) == HIGH) {
-    return ENTER;
-
-  } else if (digitalRead(minusSwitchPin) == HIGH) {
-    return MINUS;
-
-  } else if (digitalRead(plusSwitchPin) == HIGH) {
-    return PLUS;
-
-  } else {
-    return NO_PRESS;
+  for (int i = 0; i < count; i++) {
+    lcd.setCursor(0, i);
+    lcd.print((i + nav.getScrollOffset() == nav.getCurrentIndex()) ? ">" : " ");
+    lcd.print(items[i]->label);
   }
 }
