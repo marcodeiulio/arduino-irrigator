@@ -5,6 +5,11 @@ LiquidCrystal lcd(12, 11, 6, 7, 8, 9);
 int lcdColumns = 16;
 int lcdRows = 2;
 
+const int sensor1Pin = A0;
+const int sensor2Pin = A1;
+
+bool readingStatus = false;
+
 // ============ SWITCHES MANAGEMENT ============
 
 const int enterSwitchPin = 2;
@@ -131,31 +136,43 @@ public:
 
 //example callbacks
 void viewSensor1() {
+  readingStatus = true;
+  int val = readSensor(1);
+
   lcd.clear();
-  float val = 12.2;
   lcd.print("Sensor 1: " + (String)val + "%");
   delay(2000);
+  readingStatus = false;
 }
 
 void viewSensor2() {
+  readingStatus = true;
+  int val = readSensor(2);
+
   lcd.clear();
-  float val = 15.8;
   lcd.print("Sensor 2: " + (String)val + "%");
   delay(2000);
+  readingStatus = false;
 }
 
 void viewSensor3() {
+  readingStatus = true;
+  int val = readSensor(3);
+
   lcd.clear();
-  float val = 0;
   lcd.print("Sensor 3: " + (String)val + "%");
   delay(2000);
+  readingStatus = false;
 }
 
 void viewSensor4() {
+  readingStatus = true;
+  int val = readSensor(4);
+
   lcd.clear();
-  float val = 81.7;
   lcd.print("Sensor 4: " + (String)val + "%");
   delay(2000);
+  readingStatus = false;
 }
 
 // ============ MENU STRUCTURE ============
@@ -199,9 +216,59 @@ void setupMenu() {
 
 MenuNavigator nav(&mainMenu, lcdRows);
 
+
+// ============ SENSORS MANAGEMENT ============
+
+int sensor1HighValue = 1023;
+int sensor2HighValue = 1023;
+int sensor1LowValue = 0;
+int sensor2LowValue = 0;
+
+int readSensor(int sensor) {
+  if (!readingStatus || !sensor)
+    return 0;
+
+  String sensorNumber = (String)sensor;
+  int pin;
+  int highVal;
+  int lowVal;
+  switch (sensor) {
+    default:
+      return 0;
+      break;
+    case 1:
+      pin = sensor1Pin;
+      highVal = sensor1HighValue;
+      lowVal = sensor1LowValue;
+      break;
+    case 2:
+      pin = sensor2Pin;
+      highVal = sensor2HighValue;
+      lowVal = sensor2LowValue;
+      break;
+  };
+
+
+  int val = analogRead(pin);
+  Serial.print("Raw S" + sensorNumber + " = ");
+  Serial.print(val);
+  Serial.print("\n");
+  val = map(val, lowVal, highVal, 0, 100);
+  Serial.print("Map S" + sensorNumber + " = ");
+  Serial.print(val);
+  Serial.print("\n");
+
+  return val;
+}
+
 // ============ ARDUINO ============
 
 void setup() {
+
+  Serial.begin(9600);
+
+  pinMode(sensor1Pin, INPUT);
+
   pinMode(enterSwitchPin, INPUT);
   pinMode(plusSwitchPin, INPUT);
   pinMode(minusSwitchPin, INPUT);
@@ -215,8 +282,7 @@ void setup() {
 
 void loop() {
   currValue = readSwitch();
-
-  if (currValue == prevValue) return;
+  if (currValue == prevValue || readingStatus) return;
 
   switch (currValue) {
     case ENTER:
