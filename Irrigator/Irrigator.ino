@@ -175,12 +175,37 @@ void viewSensor4() {
   readingStatus = false;
 }
 
+void startAll() {
+  readingStatus = true;
+  int s1Val;
+  int s2Val;
+  int s3Val;
+  int s4Val;
+
+  do {
+    s1Val = readSensor(1);
+    s2Val = readSensor(2);
+    s3Val = readSensor(3);
+    s4Val = readSensor(4);
+
+    lcd.clear();
+    lcd.print(" S1 " + (String)s1Val + "% S2 " + (String)s2Val + "%");
+    lcd.setCursor(0, 1);
+    lcd.print(" S3 " + (String)s3Val + "% S4 " + (String)s4Val + "%");
+
+    delay(2000);
+  } while (readSwitch() == NO_PRESS);
+
+  readingStatus = false;
+}
+
 // ============ MENU STRUCTURE ============
 
 // Main Menu
 MenuItem mainMenu = { "Main Menu", MENU_ITEM_SUBMENU, nullptr, 0, nullptr, nullptr };
 
 // Main menu children
+MenuItem startMenu = { "Start", MENU_ITEM_ACTION, nullptr, 0, startAll, &mainMenu };
 MenuItem sensorsMenu = { "Sensors", MENU_ITEM_SUBMENU, nullptr, 0, nullptr, &mainMenu };
 MenuItem settingsMenu = { "Settings", MENU_ITEM_SUBMENU, nullptr, 0, nullptr, &mainMenu };
 
@@ -199,9 +224,9 @@ MenuItem settingBackItem = { "< Back", MENU_ITEM_BACK, nullptr, 0, nullptr, &set
 // Is there a workaround for this?
 void setupMenu() {
   // Build main menu
-  static MenuItem* mainChildren[] = { &sensorsMenu, &settingsMenu };
+  static MenuItem* mainChildren[] = { &startMenu, &sensorsMenu, &settingsMenu };
   mainMenu.children = mainChildren;
-  mainMenu.childCount = 2;
+  mainMenu.childCount = 3;
 
   // Build sensors submenu
   static MenuItem* sensorChildren[] = { &sensor1Item, &sensor2Item, &sensor3Item, &sensor4Item, &sensorBackItem };
@@ -282,7 +307,8 @@ void setup() {
 
 void loop() {
   currValue = readSwitch();
-  if (currValue == prevValue || readingStatus) return;
+  if (currValue == prevValue || readingStatus)
+    return;
 
   switch (currValue) {
     case ENTER:
