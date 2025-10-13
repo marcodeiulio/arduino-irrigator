@@ -96,6 +96,11 @@ public:
 
     switch (selected->type) {
       case MENU_ITEM_SUBMENU:
+
+        if (selected->action) {
+          selected->action();
+        }
+
         currentMenu = selected;
         currentIndex = 0;
         scrollOffset = 0;
@@ -134,7 +139,189 @@ public:
 
 // ============ MENU CALLBACKS ============
 
-//example callbacks
+
+// ============ SENSORS MANAGEMENT ============
+
+int sensor1HighValue = 1023;
+int sensor2HighValue = 1023;
+int sensor1LowValue = 0;
+int sensor2LowValue = 0;
+
+char s1PrintedValues[15] = "null";
+char s2PrintedValues[15] = "null";
+
+void calibrateMenuPrintedValues() {
+  sprintf(s1PrintedValues, "S1 %d | %d", sensor1HighValue, sensor1LowValue);
+  sprintf(s2PrintedValues, "S2 %d | %d", sensor2HighValue, sensor2LowValue);
+}
+
+int readSensor(int sensor, bool returnRaw = false) {
+  if (!readingStatus || !sensor)
+    return 0;
+
+  String sensorNumber = (String)sensor;
+  int pin;
+  int highVal;
+  int lowVal;
+  switch (sensor) {
+    default:
+      return 0;
+      break;
+    case 1:
+      pin = sensor1Pin;
+      highVal = sensor1HighValue;
+      lowVal = sensor1LowValue;
+      break;
+    case 2:
+      pin = sensor2Pin;
+      highVal = sensor2HighValue;
+      lowVal = sensor2LowValue;
+      break;
+  };
+
+  int val = analogRead(pin);
+
+  if (returnRaw)
+    return val;
+
+  int mappedValue;
+  mappedValue = map(val, lowVal, highVal, 0, 100);
+  return mappedValue;
+}
+
+// remapHighOrLow -> 1 to remap High, 0 to remap Low
+void remapSensor(int sensor, int remapHighOrLow) {
+
+  Serial.print("Entering remapSensor \n");
+  Serial.print("remapHighOrLow = " + (String)remapHighOrLow + "\n");
+
+  if (!readingStatus || !sensor)
+    return 0;
+
+  String sensorNumber = (String)sensor;
+  int pin;
+  int* highValPtr;
+  int* lowValPtr;
+  switch (sensor) {
+    case 1:
+      pin = sensor1Pin;
+      highValPtr = &sensor1HighValue;
+      lowValPtr = &sensor1LowValue;
+      break;
+    case 2:
+      pin = sensor2Pin;
+      highValPtr = &sensor2HighValue;
+      lowValPtr = &sensor2LowValue;
+      break;
+    default:
+      return;
+  };
+
+  int val = analogRead(pin);
+
+  if (remapHighOrLow == 1) {
+    *highValPtr = val;
+    Serial.print("Remapped High S" + sensorNumber + " -> " + (String)*highValPtr + "\n");
+    Serial.print("highValPtr = " + (String)*highValPtr + "; sensor1HighValue = " + (String)sensor1HighValue + "\n");
+  } else if (remapHighOrLow == 0) {
+    *lowValPtr = val;
+    Serial.print("Remapped Low S" + sensorNumber + " -> " + (String)*lowValPtr + "\n");
+    Serial.print("lowValPtr = " + (String)*lowValPtr + "; sensor1LowValue = " + (String)sensor1LowValue + "\n");
+  } else {
+    Serial.print("Invalid remapHighOrLow value: " + (String)remapHighOrLow + " \n");
+  }
+
+  Serial.print("Exiting remapSensor \n");
+
+  return;
+}
+
+void startAll() {
+  readingStatus = true;
+  int s1Val;
+  int s2Val;
+
+  do {
+    s1Val = readSensor(1);
+    s2Val = readSensor(2);
+
+    lcd.clear();
+    lcd.print("S1 " + (String)s1Val + "% S2 " + (String)s2Val + "%");
+    lcd.setCursor(0, 1);
+    lcd.print("Press to exit");
+
+    delay(1000);
+  } while (readSwitch() == NO_PRESS);
+
+  readingStatus = false;
+}
+
+// remapHighOrLow -> 1 to remap High, 0 to remap Low
+bool stepCalibrate(int sensor = 1, int remapHighOrLow = 1) {
+
+  Serial.print("Entering calibrate \n");
+  Serial.print("remapHighOrLow = " + (String)remapHighOrLow + "\n");
+
+  readingStatus = true;
+  int val;
+  String perc;
+
+  switch (remapHighOrLow) {
+    default:
+    case 1:
+      perc = "100%";
+      break;
+    case 0:
+      perc = "0%";
+      break;
+  }
+
+  SwitchState switchState;
+  do {
+    val = readSensor(sensor, true);
+    Serial.print("S" + (String)sensor + " reading:" + (String)val + "\n");
+
+    lcd.clear();
+    lcd.print("S" + (String)sensor + " " + perc + "-> " + (String)val);
+    lcd.setCursor(0, 1);
+    lcd.print("E->Save M->cancel");
+
+    delay(500);
+    switchState = readSwitch();
+  } while (switchState == NO_PRESS);
+
+  if (switchState != ENTER) {
+    return false;
+  }
+  // only remap if ENTER is pressed
+  remapSensor(sensor, remapHighOrLow);
+
+  readingStatus = false;
+
+  Serial.print("Exiting calibrate \n");
+  return true;
+}
+
+void fullCalibrate(int sensor) {
+  bool ok = false;
+  // Calibrate High Value (100%)
+  ok = stepCalibrate(sensor, 1);
+  if (ok) {
+    // Calibrate Low Value (0%)
+    stepCalibrate(sensor, 0);
+  }
+  calibrateMenuPrintedValues();
+  return;
+}
+
+void startS1Calibration() {
+  fullCalibrate(1);
+}
+
+void startS2Calibration() {
+  fullCalibrate(2);
+}
+
 void viewSensor1() {
   readingStatus = true;
   int val = readSensor(1);
@@ -175,30 +362,6 @@ void viewSensor4() {
   readingStatus = false;
 }
 
-void startAll() {
-  readingStatus = true;
-  int s1Val;
-  int s2Val;
-  int s3Val;
-  int s4Val;
-
-  do {
-    s1Val = readSensor(1);
-    s2Val = readSensor(2);
-    s3Val = readSensor(3);
-    s4Val = readSensor(4);
-
-    lcd.clear();
-    lcd.print(" S1 " + (String)s1Val + "% S2 " + (String)s2Val + "%");
-    lcd.setCursor(0, 1);
-    lcd.print(" S3 " + (String)s3Val + "% S4 " + (String)s4Val + "%");
-
-    delay(2000);
-  } while (readSwitch() == NO_PRESS);
-
-  readingStatus = false;
-}
-
 // ============ MENU STRUCTURE ============
 
 // Main Menu
@@ -217,9 +380,15 @@ MenuItem sensor4Item = { "Sensor 4", MENU_ITEM_ACTION, nullptr, 0, viewSensor4, 
 MenuItem sensorBackItem = { "< Back", MENU_ITEM_BACK, nullptr, 0, nullptr, &sensorsMenu };
 
 // Settings submenu children
-MenuItem settingCalibrateItem = { "Calibrate", MENU_ITEM_ACTION, nullptr, 0, nullptr, &settingsMenu };
+MenuItem settingCalibrateMenu = { "Calibrate", MENU_ITEM_SUBMENU, nullptr, 3, calibrateMenuPrintedValues, &settingsMenu };
 MenuItem settingThresholdsItem = { "Thresholds", MENU_ITEM_ACTION, nullptr, 0, nullptr, &settingsMenu };
 MenuItem settingBackItem = { "< Back", MENU_ITEM_BACK, nullptr, 0, nullptr, &settingsMenu };
+
+// Calibrate submenu children
+MenuItem calibrateS1Item = { s1PrintedValues, MENU_ITEM_ACTION, nullptr, 0, startS1Calibration, &settingCalibrateMenu };
+MenuItem calibrateS2Item = { s2PrintedValues, MENU_ITEM_ACTION, nullptr, 0, startS2Calibration, &settingCalibrateMenu };
+MenuItem calibrateBackItem = { "< Back", MENU_ITEM_BACK, nullptr, 0, nullptr, &settingsMenu };
+
 
 // Is there a workaround for this?
 void setupMenu() {
@@ -234,57 +403,18 @@ void setupMenu() {
   sensorsMenu.childCount = 5;
 
   // Build settings submenu
-  static MenuItem* settingsChildren[] = { &settingCalibrateItem, &settingThresholdsItem, &settingBackItem };
+  static MenuItem* settingsChildren[] = { &settingCalibrateMenu, &settingThresholdsItem, &settingBackItem };
   settingsMenu.children = settingsChildren;
   settingsMenu.childCount = 3;
+
+  // Build calibrate submenu
+  static MenuItem* calibrateChildren[] = { &calibrateS1Item, &calibrateS2Item, &calibrateBackItem };
+  settingCalibrateMenu.children = calibrateChildren;
+  settingCalibrateMenu.childCount = 3;
 }
 
 MenuNavigator nav(&mainMenu, lcdRows);
 
-
-// ============ SENSORS MANAGEMENT ============
-
-int sensor1HighValue = 1023;
-int sensor2HighValue = 1023;
-int sensor1LowValue = 0;
-int sensor2LowValue = 0;
-
-int readSensor(int sensor) {
-  if (!readingStatus || !sensor)
-    return 0;
-
-  String sensorNumber = (String)sensor;
-  int pin;
-  int highVal;
-  int lowVal;
-  switch (sensor) {
-    default:
-      return 0;
-      break;
-    case 1:
-      pin = sensor1Pin;
-      highVal = sensor1HighValue;
-      lowVal = sensor1LowValue;
-      break;
-    case 2:
-      pin = sensor2Pin;
-      highVal = sensor2HighValue;
-      lowVal = sensor2LowValue;
-      break;
-  };
-
-
-  int val = analogRead(pin);
-  Serial.print("Raw S" + sensorNumber + " = ");
-  Serial.print(val);
-  Serial.print("\n");
-  val = map(val, lowVal, highVal, 0, 100);
-  Serial.print("Map S" + sensorNumber + " = ");
-  Serial.print(val);
-  Serial.print("\n");
-
-  return val;
-}
 
 // ============ ARDUINO ============
 
